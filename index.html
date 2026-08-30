@@ -8,7 +8,7 @@
 <header><div class="brand"><span>ق</span><div><b>قسطتك</b><small>GestTec</small></div></div><div id="clock"></div></header>
 <nav>
 <button data-page="home">الرئيسية</button><button data-page="customers">الزبائن</button>
-<button data-page="contracts">العقود</button><button data-page="reports">التقارير</button>
+<button data-page="contracts">العقود</button><button data-page="reports">التقارير</button><button data-page="reminders">🔔 التذكيرات</button>
 </nav>
 <main>
 <section id="home" class="page active">
@@ -24,6 +24,11 @@
 <input id="contractSearch" placeholder="بحث باسم الزبون أو السلعة" oninput="renderContracts()"><div id="contractList"></div></section>
 
 <section id="reports" class="page"><h1>التقارير</h1><div class="panel" id="report"></div></section>
+<section id="reminders" class="page">
+<div class="title"><h1>التذكيرات</h1><button onclick="renderReminders()">↻ تحديث</button></div>
+<div class="panel reminder-settings"><h3>إعداد التذكير</h3><label>ذكّر الزبون قبل الاستحقاق بـ</label><select id="reminderDays" onchange="saveReminderDays()"><option value="3">3 أيام</option><option value="5">5 أيام</option></select><p class="muted">التطبيق يعرض الأقساط التي اقترب موعدها، ويمكنك إرسال رسالة واتساب مباشرة.</p></div>
+<div id="reminderList"></div>
+</section>
 </main>
 
 <div id="modal" class="modal"><div class="modalbox"><button class="x" onclick="closeModal()">×</button><div id="modalContent"></div></div></div>
