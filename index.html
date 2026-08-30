@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>قسطتك</title><link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><div class="brand"><span>ق</span><div><b>قسطتك</b><small>GestTec</small></div></div><div id="clock"></div></header>
+<nav>
+<button data-page="home">الرئيسية</button><button data-page="customers">الزبائن</button>
+<button data-page="contracts">العقود</button><button data-page="reports">التقارير</button>
+</nav>
+<main>
+<section id="home" class="page active">
+<h1>لوحة التحكم</h1><div class="cards" id="stats"></div>
+<div class="quick"><button onclick="openNewContract()">＋ عقد جديد</button><button onclick="openNewCustomer()">＋ زبون</button></div>
+<div class="panel"><h2>تنبيهات اليوم</h2><div id="alerts"></div></div>
+</section>
+
+<section id="customers" class="page"><div class="title"><h1>الزبائن</h1><button onclick="openNewCustomer()">＋ إضافة زبون</button></div>
+<input id="customerSearch" placeholder="بحث بالاسم أو الهاتف" oninput="renderCustomers()"><div id="customerList"></div></section>
+
+<section id="contracts" class="page"><div class="title"><h1>العقود</h1><button onclick="openNewContract()">＋ عقد جديد</button></div>
+<input id="contractSearch" placeholder="بحث باسم الزبون أو السلعة" oninput="renderContracts()"><div id="contractList"></div></section>
+
+<section id="reports" class="page"><h1>التقارير</h1><div class="panel" id="report"></div></section>
+</main>
+
+<div id="modal" class="modal"><div class="modalbox"><button class="x" onclick="closeModal()">×</button><div id="modalContent"></div></div></div>
+<script src="app.js"></script>
+</body></html>
