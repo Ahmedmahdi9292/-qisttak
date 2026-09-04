@@ -54,27 +54,47 @@ function saveEditedContract(cid){
 function deleteContract(cid){let c=db.contracts.find(x=>x.id===cid);if(!c)return;let n=db.customers.find(x=>x.id===c.customerId);if(!confirm(`هل أنت متأكد من مسح عقد ${n?.name||''}؟\nسيتم حذف العقد وجميع دفعاته، ولن يُحذف الزبون.`))return;db.contracts=db.contracts.filter(x=>x.id!==cid);db.payments=db.payments.filter(p=>p.contractId!==cid);save();closeModal();go('contracts')}
 function contractView(cid){let c=db.contracts.find(x=>x.id===cid),n=db.customers.find(x=>x.id===c.customerId)?.name||'-',p=paid(c),rem=remaining(c),monthly=(c.total-c.down)/c.months;let rows=contractRows(c,p,monthly);openModal(`<h2>${n} — ${c.product}</h2><div class="panel"><div class="row"><span>سعر الأساس</span><b>${money(c.base)}</b></div><div class="row"><span>التحميل</span><b>${money(c.load)}</b></div><div class="row"><span>الإجمالي</span><b>${money(c.total)}</b></div><div class="row"><span>المقدم</span><b>${money(c.down)}</b></div><div class="row"><span>المدفوع</span><b>${money(p)}</b></div><div class="row"><span>المتبقي</span><b>${money(rem)}</b></div></div><h3>جدول الأقساط</h3>${rows}<div class="quick"><button onclick="addPayment('${cid}')">💵 تسجيل دفعة</button><button onclick="sendWhatsApp('${cid}')">📷 إرسال كشف كصورة</button><button class="secondary" onclick="editContract('${cid}')">✏️ تعديل العقد</button><button onclick="sendReminder('${cid}')">🔔 تذكير القسط</button><button onclick="deferOne('${cid}')">⏸️ تأجيل قسط</button><button onclick="earlyPay('${cid}')">✅ تسديد مبكر</button></div>`)}
 function normalizePhone(phone){let p=(phone||'').replace(/[^0-9]/g,'');if(p.startsWith('0'))p='964'+p.slice(1);return p}
-function buildStatementCanvas(cid){return new Promise(resolve=>{let c=db.contracts.find(x=>x.id===cid),n=db.customers.find(x=>x.id===c.customerId);let p=paid(c),rem=remaining(c),monthly=(c.total-c.down)/c.months,ip=installmentPaid(c),paidCount=rem<=0?c.months:Math.min(c.months,Math.floor((ip+0.0001)/monthly));let scale=2,w=1024,rowH=74,top=30,headerH=82,summaryY=150,summaryH=250,tableY=430,h=tableY+headerH+c.months*rowH+150;let canvas=document.createElement('canvas');canvas.width=w*scale;canvas.height=h*scale;let ctx=canvas.getContext('2d');ctx.scale(scale,scale);ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.strokeStyle='#dbe3ee';ctx.lineWidth=2;ctx.strokeRect(18,18,w-36,h-36);
-// Header: small logo and title, as agreed
-ctx.fillStyle='#10244f';ctx.beginPath();ctx.roundRect(45,top,74,74,14);ctx.fill();ctx.fillStyle='#fff';ctx.font='bold 34px Arial';ctx.textAlign='center';ctx.fillText('ق',82,top+49);ctx.fillStyle='#10244f';ctx.font='bold 23px Arial';ctx.textAlign='left';ctx.fillText('QISTTAK',132,top+30);ctx.fillStyle='#e97816';ctx.font='bold 22px Arial';ctx.fillText('قسطتك',132,top+57);
-ctx.fillStyle='#10244f';ctx.font='bold 30px Arial';ctx.textAlign='right';ctx.fillText('كشف الأقساط',w-48,top+35);ctx.strokeStyle='#e97816';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(w-48,top+57);ctx.lineTo(w-215,top+57);ctx.stroke();
-// Compact summary block
-ctx.fillStyle='#f4f7fb';ctx.beginPath();ctx.roundRect(40,summaryY,w-80,summaryH,18);ctx.fill();ctx.strokeStyle='#d7e1ef';ctx.lineWidth=1;ctx.stroke();ctx.strokeStyle='#cbd7e8';ctx.beginPath();ctx.moveTo(w/2,summaryY+28);ctx.lineTo(w/2,summaryY+summaryH-28);ctx.stroke();
-ctx.fillStyle='#17366c';ctx.font='bold 17px Arial';ctx.textAlign='right';
-// Right column: customer / item / total
-ctx.fillText('اسم الزبون:',w-70,summaryY+55);ctx.font='bold 23px Arial';ctx.fillText(n.name,w-70,summaryY+88);
-ctx.font='bold 17px Arial';ctx.fillText('نوع الآيتم:',w-70,summaryY+132);ctx.font='bold 23px Arial';ctx.fillText(c.product,w-70,summaryY+165);
-ctx.font='bold 17px Arial';ctx.fillText('إجمالي العقد:',w-70,summaryY+209);ctx.font='bold 23px Arial';ctx.fillText(money(c.total),w-70,summaryY+238);
-// Left column: down payment / number of installments / monthly installment
-ctx.font='bold 17px Arial';ctx.fillText('المقدم:',w/2-55,summaryY+55);ctx.font='bold 23px Arial';ctx.fillText(money(c.down),w/2-55,summaryY+88);
-ctx.font='bold 17px Arial';ctx.fillText('عدد الأقساط:',w/2-55,summaryY+132);ctx.font='bold 23px Arial';ctx.fillText(String(c.months),w/2-55,summaryY+165);
-ctx.font='bold 17px Arial';ctx.fillText('قيمة القسط الشهري:',w/2-55,summaryY+209);ctx.font='bold 23px Arial';ctx.fillText(money(monthly),w/2-55,summaryY+238);
-// Table: new agreed layout with notes
-let x0=40,x1=115,x2=335,x3=595,x4=790,x5=w-40;ctx.fillStyle='#10244f';ctx.beginPath();ctx.roundRect(x0,tableY,x5-x0,headerH,14);ctx.fill();ctx.fillStyle='#fff';ctx.font='bold 18px Arial';ctx.textAlign='center';ctx.fillText('#',(x0+x1)/2,tableY+51);ctx.fillText('الحالة',(x1+x2)/2,tableY+51);ctx.fillText('تاريخ الاستحقاق',(x2+x3)/2,tableY+51);ctx.fillText('المبلغ',(x3+x4)/2,tableY+51);ctx.fillText('ملاحظات',(x4+x5)/2,tableY+51);
-for(let i=1;i<=c.months;i++){let ds=dueDate(c,i),st=installmentStatus(ds,i,paidCount),[yy,mm,dd]=ds.split('-');let period=`${yy}/${mm}/${dd}`;let y=tableY+headerH+(i-1)*rowH;ctx.fillStyle=i%2?'#fff':'#f3f7fc';ctx.fillRect(x0,y,x5-x0,rowH);ctx.strokeStyle='#dbe3ee';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x1,y);ctx.lineTo(x1,y+rowH);ctx.moveTo(x2,y);ctx.lineTo(x2,y+rowH);ctx.moveTo(x3,y);ctx.lineTo(x3,y+rowH);ctx.moveTo(x4,y);ctx.lineTo(x4,y+rowH);ctx.stroke();ctx.fillStyle='#132752';ctx.font='bold 17px Arial';ctx.textAlign='center';ctx.fillText(String(i),(x0+x1)/2,y+46);ctx.fillText(period,(x2+x3)/2,y+46);ctx.fillText(money(Math.round(monthly)),(x3+x4)/2,y+46);
-let pillColor=st==='مدفوع'?'#dff5e7':st==='مستحق'?'#fff0df':'#e4f0ff';let textColor=st==='مدفوع'?'#159447':st==='مستحق'?'#eb7a0b':'#1976d2';ctx.fillStyle=pillColor;ctx.beginPath();ctx.roundRect(x1+20,y+15,(x2-x1)-40,44,12);ctx.fill();ctx.fillStyle=textColor;ctx.font='bold 17px Arial';ctx.fillText(st,(x1+x2)/2,y+43);ctx.fillStyle='#17366c';ctx.font='16px Arial';ctx.fillText(st==='مدفوع'?'تم الدفع':st==='مستحق'?'لم يتم الدفع بعد':'-',(x4+x5)/2,y+46);}
-let footY=tableY+headerH+c.months*rowH+55;ctx.strokeStyle='#2c63a8';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(40,footY);ctx.lineTo(w-40,footY);ctx.stroke();ctx.fillStyle='#10244f';ctx.font='bold 16px Arial';ctx.textAlign='right';ctx.fillText(`المدفوع: ${money(p)}   |   المتبقي: ${money(rem)}`,w-45,footY+38);ctx.textAlign='left';ctx.font='14px Arial';ctx.fillText(`تاريخ الطباعة: ${new Date().toLocaleString('ar-IQ',{dateStyle:'short',timeStyle:'short'})}`,45,footY+38);
-canvas.toBlob(blob=>resolve({blob,name:`qisttak-${normalizePhone(n.phone)}.png`,customerPhone:normalizePhone(n.phone)}),'image/png');})}
+function buildStatementCanvas(cid){return new Promise(resolve=>{
+ let c=db.contracts.find(x=>x.id===cid),n=db.customers.find(x=>x.id===c.customerId);
+ let p=paid(c),rem=remaining(c),monthly=(c.total-c.down)/c.months,ip=installmentPaid(c),paidCount=rem<=0?c.months:Math.min(c.months,Math.floor((ip+0.0001)/monthly));
+ let scale=2,w=1024,rowH=74,top=30,headerH=82,summaryY=150,summaryH=250,tableY=430,h=tableY+headerH+c.months*rowH+150;
+ const esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+ const t=(x,y,text,size=20,weight=700,anchor='start',fill='#17366c',dir='rtl')=>`<text x="${x}" y="${y}" font-family="Arial, sans-serif" font-size="${size}px" font-weight="${weight}" fill="${fill}" text-anchor="${anchor}" direction="${dir}" unicode-bidi="plaintext">${esc(text)}</text>`;
+ let svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${w*scale}" height="${h*scale}" viewBox="0 0 ${w} ${h}">
+ <rect width="${w}" height="${h}" fill="#fff"/><rect x="18" y="18" width="${w-36}" height="${h-36}" fill="none" stroke="#dbe3ee" stroke-width="2"/>
+ <rect x="45" y="${top}" width="74" height="74" rx="14" fill="#10244f"/>${t(82,top+49,'ق',34,700,'middle','#fff')}
+ ${t(132,top+30,'QISTTAK',23,700,'start','#10244f','ltr')}${t(132,top+57,'قسطتك',22,700,'start','#e97816')}
+ ${t(w-48,top+35,'كشف الأقساط',30,700,'end','#10244f')}<line x1="${w-48}" y1="${top+57}" x2="${w-215}" y2="${top+57}" stroke="#e97816" stroke-width="5"/>
+ <rect x="40" y="${summaryY}" width="${w-80}" height="${summaryH}" rx="18" fill="#f4f7fb" stroke="#d7e1ef"/>
+ <line x1="${w/2}" y1="${summaryY+28}" x2="${w/2}" y2="${summaryY+summaryH-28}" stroke="#cbd7e8"/>
+ ${t(w-70,summaryY+55,'اسم الزبون:',17,700,'end')}${t(w-70,summaryY+88,n.name,23,700,'end')}
+ ${t(w-70,summaryY+132,'نوع الآيتم:',17,700,'end')}${t(w-70,summaryY+165,c.product,23,700,'end')}
+ ${t(w-70,summaryY+209,'إجمالي العقد:',17,700,'end')}${t(w-70,summaryY+238,money(c.total),23,700,'end')}
+ ${t(w/2-55,summaryY+55,'المقدم:',17,700,'end')}${t(w/2-55,summaryY+88,money(c.down),23,700,'end')}
+ ${t(w/2-55,summaryY+132,'عدد الأقساط:',17,700,'end')}${t(w/2-55,summaryY+165,String(c.months),23,700,'end')}
+ ${t(w/2-55,summaryY+209,'قيمة القسط الشهري:',17,700,'end')}${t(w/2-55,summaryY+238,money(monthly),23,700,'end')}
+ <rect x="40" y="${tableY}" width="${w-80}" height="${headerH}" rx="14" fill="#10244f"/>
+ ${t((40+115)/2,tableY+51,'#',18,700,'middle','#fff','ltr')}${t((115+335)/2,tableY+51,'الحالة',18,700,'middle','#fff')}${t((335+595)/2,tableY+51,'تاريخ الاستحقاق',18,700,'middle','#fff')}${t((595+790)/2,tableY+51,'المبلغ',18,700,'middle','#fff')}${t((790+w-40)/2,tableY+51,'ملاحظات',18,700,'middle','#fff')}`;
+ let x0=40,x1=115,x2=335,x3=595,x4=790,x5=w-40;
+ for(let i=1;i<=c.months;i++){
+  let ds=dueDate(c,i),st=installmentStatus(ds,i,paidCount),[yy,mm,dd]=ds.split('-'),period=`${yy}/${mm}/${dd}`,y=tableY+headerH+(i-1)*rowH;
+  let bg=i%2?'#fff':'#f3f7fc',pillColor=st==='مدفوع'?'#dff5e7':st==='مستحق'?'#fff0df':'#e4f0ff',textColor=st==='مدفوع'?'#159447':st==='مستحق'?'#eb7a0b':'#1976d2';
+  svg+=`<rect x="${x0}" y="${y}" width="${x5-x0}" height="${rowH}" fill="${bg}"/>`;
+  [x1,x2,x3,x4].forEach(x=>svg+=`<line x1="${x}" y1="${y}" x2="${x}" y2="${y+rowH}" stroke="#dbe3ee"/>`);
+  svg+=t((x0+x1)/2,y+46,String(i),17,700,'middle','#132752','ltr');
+  svg+=t((x2+x3)/2,y+46,period,17,700,'middle','#132752','ltr');
+  svg+=t((x3+x4)/2,y+46,money(Math.round(monthly)),17,700,'middle','#132752');
+  svg+=`<rect x="${x1+20}" y="${y+15}" width="${(x2-x1)-40}" height="44" rx="12" fill="${pillColor}"/>`;
+  svg+=t((x1+x2)/2,y+43,st,17,700,'middle',textColor);
+  svg+=t((x4+x5)/2,y+46,st==='مدفوع'?'تم الدفع':st==='مستحق'?'لم يتم الدفع بعد':'-',16,400,'middle','#17366c');
+ }
+ let footY=tableY+headerH+c.months*rowH+55;
+ svg+=`<line x1="40" y1="${footY}" x2="${w-40}" y2="${footY}" stroke="#2c63a8" stroke-width="2"/>`;
+ svg+=t(w-45,footY+38,`المدفوع: ${money(p)}   |   المتبقي: ${money(rem)}`,16,700,'end','#10244f');
+ svg+=t(45,footY+38,`تاريخ الطباعة: ${new Date().toLocaleString('ar-IQ',{dateStyle:'short',timeStyle:'short'})}`,14,400,'start','#10244f');
+ svg+='</svg>';
+ let img=new Image();img.onload=()=>{let canvas=document.createElement('canvas');canvas.width=w*scale;canvas.height=h*scale;let ctx=canvas.getContext('2d');ctx.drawImage(img,0,0);canvas.toBlob(blob=>resolve({blob,name:`qisttak-${normalizePhone(n.phone)}.png`,customerPhone:normalizePhone(n.phone)}),'image/png')};img.onerror=()=>{let canvas=document.createElement('canvas');canvas.width=w*scale;canvas.height=h*scale;let ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#10244f';ctx.font='bold 32px Arial';ctx.fillText('QISTTAK',40,60);canvas.toBlob(blob=>resolve({blob,name:`qisttak-${normalizePhone(n.phone)}.png`,customerPhone:normalizePhone(n.phone)}),'image/png')};img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);
+})}
 async function sendWhatsApp(cid){let c=db.contracts.find(x=>x.id===cid),n=db.customers.find(x=>x.id===c.customerId);if(!n)return;let data=await buildStatementCanvas(cid);let file=new File([data.blob],data.name,{type:'image/png'});let phone=normalizePhone(n.phone);if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:'كشف أقساط قسطتك'});return}catch(e){if(e.name==='AbortError')return;}}if(phone)window.location.href='https://wa.me/'+phone;}
 function openWorkWhatsApp(cid){let c=db.contracts.find(x=>x.id===cid),n=db.customers.find(x=>x.id===c.customerId);if(!n)return;let phone=normalizePhone(n.phone);if(!phone)return alert('رقم الزبون غير صحيح');window.location.href='https://wa.me/'+phone;}
 
