@@ -57,44 +57,44 @@ function normalizePhone(phone){let p=(phone||'').replace(/[^0-9]/g,'');if(p.star
 function buildStatementCanvas(cid){return new Promise(async resolve=>{
  let c=db.contracts.find(x=>x.id===cid),n=db.customers.find(x=>x.id===c.customerId);if(!c||!n)return;
  let p=paid(c),rem=remaining(c),monthly=(c.total-c.down)/c.months,ip=installmentPaid(c),paidCount=rem<=0?c.months:Math.min(c.months,Math.floor((ip+0.0001)/monthly));
- const W=1200,rowH=78,top=28,summaryY=150,summaryH=300,tableY=478,headerH=78,h=tableY+headerH+c.months*rowH+125;
+ const W=1200,rowH=82,top=34,summaryY=140,summaryH=235,tableY=405,headerH=78,h=tableY+headerH+c.months*rowH+115;
  const canvas=document.createElement('canvas');canvas.width=W*2;canvas.height=h*2;const ctx=canvas.getContext('2d');ctx.scale(2,2);ctx.fillStyle='#fff';ctx.fillRect(0,0,W,h);
- ctx.lineWidth=2;ctx.strokeStyle='#dbe3ee';ctx.strokeRect(18,18,W-36,h-36);
  const font=(size,weight=700)=>`${weight} ${size}px Arial, Tahoma, sans-serif`;
- function text(v,x,y,size=22,weight=700,align='center',fill='#17366c',rtl=true){ctx.save();ctx.font=font(size,weight);ctx.fillStyle=fill;ctx.textAlign=align;ctx.textBaseline='middle';if('direction' in ctx)ctx.direction=rtl?'rtl':'ltr';ctx.fillText(String(v??''),x,y);ctx.restore();}
- function rounded(x,y,w,hh,r,fill,stroke=null){ctx.save();ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+hh,r);ctx.arcTo(x+w,y+hh,x,y+hh,r);ctx.arcTo(x,y+hh,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.stroke()}ctx.restore();}
- // Header / logo
- rounded(45,top,74,74,14,'#10244f');text('ق',82,top+38,34,700,'center','#fff');
- text('QISTTAK',132,top+26,23,700,'left','#10244f',false);text('قسطتك',132,top+55,20,700,'left','#e97816',true);
- text('كشف الأقساط',1155,top+32,29,700,'right','#10244f',true);ctx.fillStyle='#e97816';ctx.fillRect(915,top+58,240,5);
- // Summary: one clean column, strong readable text
- rounded(40,summaryY,W-80,summaryH,20,'#f4f7fb','#d7e1ef');
- const sx=W/2;const line1=summaryY+48,line2=summaryY+96,line3=summaryY+144,line4=summaryY+192,line5=summaryY+240;
- text(`اسم الزبون: ${n.name}`,sx,line1,24,700,'center','#17366c',true);
- text(`نوع الآيتم: ${c.product}`,sx,line2,24,700,'center','#17366c',true);
- text(`إجمالي العقد: ${money(c.total)}`,sx,line3,24,700,'center','#17366c',true);
- text(`المقدم: ${money(c.down)}`,sx,line4,23,700,'center','#17366c',true);
- text(`عدد الأقساط: ${c.months}   •   القسط الشهري: ${money(monthly)}`,sx,line5,22,700,'center','#17366c',true);
- // compact paid/remaining line
- text(`المدفوع: ${money(p)}   |   المتبقي: ${money(rem)}`,sx,summaryY+277,21,700,'center',rem>0?'#17366c':'#159447',true);
- // Table - same structure/colors
- const x0=40,x1=160,x2=390,x3=650,x4=860,x5=W-40;
- rounded(x0,tableY,x5-x0,headerH,14,'#10244f');
- text('#',(x0+x1)/2,tableY+39,19,700,'center','#fff',false);text('الحالة',(x1+x2)/2,tableY+39,19,700,'center','#fff',true);text('تاريخ الاستحقاق',(x2+x3)/2,tableY+39,19,700,'center','#fff',true);text('المبلغ',(x3+x4)/2,tableY+39,19,700,'center','#fff',true);text('ملاحظات',(x4+x5)/2,tableY+39,19,700,'center','#fff',true);
+ function text(v,x,y,size=22,weight=700,align='center',fill='#10244f',rtl=true){ctx.save();ctx.font=font(size,weight);ctx.fillStyle=fill;ctx.textAlign=align;ctx.textBaseline='middle';if('direction' in ctx)ctx.direction=rtl?'rtl':'ltr';ctx.fillText(String(v??''),x,y);ctx.restore();}
+ function rounded(x,y,w,hh,r,fill,stroke=null){ctx.save();ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+hh,r);ctx.arcTo(x+w,y+hh,x,y+hh,r);ctx.arcTo(x,y+hh,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();ctx.fillStyle=fill;ctx.fill();if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=2;ctx.stroke()}ctx.restore();}
+ // Header: short, strong and safely inside the page
+ rounded(42,top,76,76,14,'#10244f');text('ق',80,top+39,34,700,'center','#fff',true);
+ text('QISTTAK',138,top+28,22,700,'left','#10244f',false);text('قسطتك',138,top+55,19,700,'left','#e97816',true);
+ text('كشف الأقساط',1085,top+34,27,700,'center','#10244f',true);ctx.fillStyle='#e97816';ctx.fillRect(940,top+62,190,5);
+ // Simple summary: no long mixed Arabic sentences
+ rounded(40,summaryY,W-80,summaryH,18,'#f2f6fb','#d7e1ef');
+ const leftX=335,rightX=865;
+ text('الزبون',leftX,summaryY+48,20,700,'center','#10244f',true);text(n.name,leftX,summaryY+82,24,700,'center','#10244f',true);
+ text('الآيتم',leftX,summaryY+132,20,700,'center','#10244f',true);text(c.product,leftX,summaryY+166,24,700,'center','#10244f',true);
+ text('الإجمالي',rightX,summaryY+48,20,700,'center','#10244f',true);text(money(c.total),rightX,summaryY+82,24,700,'center','#10244f',true);
+ text('المقدم',rightX,summaryY+132,20,700,'center','#10244f',true);text(money(c.down),rightX,summaryY+166,24,700,'center','#10244f',true);
+ text(`عدد الأقساط: ${c.months}`,600,summaryY+208,19,700,'center','#17366c',true);text(`القسط: ${money(monthly)}`,600,summaryY+232,19,700,'center','#17366c',true);
+ // Simple table: # / التاريخ / القسط / الحالة
+ const x0=40,x1=145,x2=490,x3=790,x4=W-40;
+ rounded(x0,tableY,x4-x0,headerH,14,'#10244f');
+ text('#',(x0+x1)/2,tableY+39,19,700,'center','#fff',false);
+ text('التاريخ',(x1+x2)/2,tableY+39,20,700,'center','#fff',true);
+ text('القسط',(x2+x3)/2,tableY+39,20,700,'center','#fff',true);
+ text('الحالة',(x3+x4)/2,tableY+39,20,700,'center','#fff',true);
  for(let i=1;i<=c.months;i++){
   let ds=dueDate(c,i),st=installmentStatus(ds,i,paidCount),y=tableY+headerH+(i-1)*rowH;
-  ctx.fillStyle=i%2?'#fff':'#f3f7fc';ctx.fillRect(x0,y,x5-x0,rowH);
-  [x1,x2,x3,x4].forEach(x=>{ctx.strokeStyle='#dbe3ee';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,y+rowH);ctx.stroke()});
-  const cy=y+rowH/2;const [yy,mm,dd]=ds.split('-');
-  text(String(i),(x0+x1)/2,cy,18,700,'center','#132752',false);
-  text(`${yy}/${mm}/${dd}`,(x2+x3)/2,cy,18,700,'center','#132752',false);
-  text(money(Math.round(monthly)),(x3+x4)/2,cy,18,700,'center','#132752',true);
-  const pill=st==='مدفوع'?'#dff5e7':st==='مستحق'?'#fff0df':'#e4f0ff',tc=st==='مدفوع'?'#159447':st==='مستحق'?'#eb7a0b':'#1976d2';
-  rounded(x1+20,y+16,x2-x1-40,46,12,pill);text(st,(x1+x2)/2,cy,18,700,'center',tc,true);
-  text(st==='مدفوع'?'تم الدفع':st==='مستحق'?'لم يتم الدفع بعد':'-',(x4+x5)/2,cy,17,700,'center','#17366c',true);
+  ctx.fillStyle=i%2?'#ffffff':'#eef4fb';ctx.fillRect(x0,y,x4-x0,rowH);
+  [x1,x2,x3].forEach(x=>{ctx.strokeStyle='#d8e2ee';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x,y+rowH);ctx.stroke()});
+  const cy=y+rowH/2;
+  text(String(i),(x0+x1)/2,cy,19,700,'center','#10244f',false);
+  let [yy,mm,dd]=ds.split('-');text(`${yy}/${mm}/${dd}`,(x1+x2)/2,cy,19,700,'center','#10244f',false);
+  text(money(Math.round(monthly)),(x2+x3)/2,cy,19,700,'center','#10244f',true);
+  const pill=st==='مدفوع'?'#ccefd9':st==='مستحق'?'#ffe1bd':'#d6e8ff';const tc=st==='مدفوع'?'#118844':st==='مستحق'?'#d96800':'#126bc4';
+  rounded(x3+38,y+17,x4-x3-76,48,13,pill);text(st,(x3+x4)/2,cy,19,700,'center',tc,true);
  }
- let footY=tableY+headerH+c.months*rowH+52;ctx.strokeStyle='#2c63a8';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(40,footY);ctx.lineTo(W-40,footY);ctx.stroke();
- text(`تاريخ الطباعة: ${new Date().toLocaleString('ar-IQ',{dateStyle:'short',timeStyle:'short'})}`,W/2,footY+36,15,600,'center','#10244f',true);
+ let footY=tableY+headerH+c.months*rowH+38;ctx.strokeStyle='#2c63a8';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(40,footY);ctx.lineTo(W-40,footY);ctx.stroke();
+ text(`المدفوع: ${money(p)}`,420,footY+35,18,700,'center','#118844',true);text(`المتبقي: ${money(rem)}`,780,footY+35,18,700,'center','#10244f',true);
+ text(new Date().toLocaleString('ar-IQ',{dateStyle:'short',timeStyle:'short'}),600,footY+68,14,600,'center','#33445f',true);
  canvas.toBlob(blob=>resolve({blob,name:`qisttak-${normalizePhone(n.phone)}.png`,customerPhone:normalizePhone(n.phone)}),'image/png');
  })}
 async function sendWhatsApp(cid){let c=db.contracts.find(x=>x.id===cid),n=db.customers.find(x=>x.id===c.customerId);if(!n)return;let data=await buildStatementCanvas(cid);let file=new File([data.blob],data.name,{type:'image/png'});let phone=normalizePhone(n.phone);if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:'كشف أقساط قسطتك'});return}catch(e){if(e.name==='AbortError')return;}}if(phone)window.location.href='https://wa.me/'+phone;}
