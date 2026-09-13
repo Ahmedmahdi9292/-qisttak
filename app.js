@@ -1,6 +1,32 @@
 const KEY='qisttak_v1_data';
-let db=JSON.parse(localStorage.getItem(KEY)||'{"customers":[],"contracts":[],"payments":[],"expenses":[]}');
-const save=()=>localStorage.setItem(KEY,JSON.stringify(db));
+const EMPTY_DB={customers:[],contracts:[],payments:[],expenses:[]};
+let db=JSON.parse(localStorage.getItem(KEY)||JSON.stringify(EMPTY_DB));
+let cloud=null, cloudUser=null, cloudTimer=null;
+const cloudConfigured=()=>!!(window.QISTTAK_CONFIG?.SUPABASE_URL&&window.QISTTAK_CONFIG?.SUPABASE_ANON_KEY&&window.supabase);
+if(cloudConfigured()) cloud=supabase.createClient(window.QISTTAK_CONFIG.SUPABASE_URL,window.QISTTAK_CONFIG.SUPABASE_ANON_KEY);
+const save=()=>{localStorage.setItem(KEY,JSON.stringify(db)); scheduleCloudSave();};
+function scheduleCloudSave(){if(!cloud||!cloudUser)return;clearTimeout(cloudTimer);cloudTimer=setTimeout(saveCloud,500);}
+async function saveCloud(){if(!cloud||!cloudUser)return;const {error}=await cloud.from('qisttak_data').upsert({user_id:cloudUser.id,data:db,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(error)console.error('Qisttak cloud save:',error);}
+async function loadCloud(){if(!cloud||!cloudUser)return;const {data,error}=await cloud.from('qisttak_data').select('data').eq('user_id',cloudUser.id).maybeSingle();if(error){showSyncBanner('تعذر الاتصال بالمزامنة: '+error.message,true);return;}if(data?.data){db={...EMPTY_DB,...data.data};localStorage.setItem(KEY,JSON.stringify(db));renderHome();}else{await saveCloud();}showSyncBanner('☁️ المزامنة فعالة — بياناتك محفوظة سحابيًا.',false);}
+function showSyncBanner(msg,error=false){const el=document.getElementById('syncBanner');if(!el)return;el.style.display='block';el.textContent=msg;el.style.borderRight='4px solid '+(error?'#c33':'#18864b');}
+async function initCloud(){
+ if(!cloudConfigured()){showSyncBanner('المزامنة السحابية غير مفعلة بعد. افتح ☁️ المزامنة لإعدادها.',false);return;}
+ const {data}=await cloud.auth.getSession(); cloudUser=data?.session?.user||null;
+ if(cloudUser){await loadCloud();}
+ else showSyncBanner('☁️ المزامنة جاهزة — افتح ☁️ المزامنة وسجّل الدخول.',false);
+ cloud.auth.onAuthStateChange(async (_e,session)=>{cloudUser=session?.user||null;if(cloudUser) await loadCloud();});
+}
+async function openSyncSettings(){
+ if(!cloudConfigured()) return openModal(`<h2>☁️ المزامنة السحابية</h2><p>النسخة جاهزة للمزامنة بين الآيفون والسامسونگ، لكن لازم أولاً تربط مشروع Supabase.</p><p class="muted">بعد إنشاء المشروع، ضع رابط المشروع وAnon Key داخل ملف <b>config.js</b> ثم ارفع الملفات الثلاثة من جديد.</p><button onclick="closeModal()">حسناً</button>`);
+ const {data}=await cloud.auth.getSession();const u=data?.session?.user;
+ if(u) return openModal(`<h2>☁️ المزامنة</h2><p>الحساب: <b>${u.email||u.id}</b></p><p class="muted">أي إضافة أو تعديل يتم رفعه تلقائيًا للسحابة.</p><button onclick="forceCloudSync()">↻ مزامنة الآن</button><button class="secondary" onclick="cloudSignOut()">تسجيل خروج</button>`);
+ openModal(`<h2>☁️ دخول قسطتك</h2><label>الإيميل</label><input id="syncEmail" type="email" autocomplete="email"><label>كلمة المرور</label><input id="syncPassword" type="password" autocomplete="current-password"><button onclick="cloudSignIn()">دخول</button><button class="secondary" onclick="cloudSignUp()">إنشاء حساب جديد</button><p class="muted">استخدم نفس الحساب في الآيفون والسامسونگ.</p>`);
+}
+async function cloudSignIn(){const e=syncEmail.value.trim(),p=syncPassword.value;if(!e||!p)return alert('أدخل الإيميل وكلمة المرور');const {error}=await cloud.auth.signInWithPassword({email:e,password:p});if(error)return alert(error.message);closeModal();}
+async function cloudSignUp(){const e=syncEmail.value.trim(),p=syncPassword.value;if(!e||p.length<6)return alert('أدخل إيميل صحيح وكلمة مرور 6 أحرف على الأقل');const {error}=await cloud.auth.signUp({email:e,password:p});if(error)return alert(error.message);alert('تم إنشاء الحساب. إذا طلب تأكيد الإيميل، أكده ثم سجل الدخول.');}
+async function cloudSignOut(){await cloud.auth.signOut();cloudUser=null;showSyncBanner('☁️ تم تسجيل الخروج من المزامنة.',false);closeModal();}
+async function forceCloudSync(){await saveCloud();alert('تمت المزامنة.');}
+initCloud();
 const REMINDER_KEY='qisttak_reminder_days';
 const WORK_WA_KEY='qisttak_work_whatsapp';
 const getWorkWhatsApp=()=>localStorage.getItem(WORK_WA_KEY)||'';
