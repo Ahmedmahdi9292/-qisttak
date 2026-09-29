@@ -3,18 +3,30 @@ const EMPTY_DB={customers:[],contracts:[],payments:[],expenses:[]};
 let db=JSON.parse(localStorage.getItem(KEY)||JSON.stringify(EMPTY_DB));
 let cloud=null, cloudUser=null, cloudTimer=null;
 const cloudConfigured=()=>!!(window.QISTTAK_CONFIG?.SUPABASE_URL&&window.QISTTAK_CONFIG?.SUPABASE_ANON_KEY&&window.supabase);
-if(cloudConfigured()) cloud=supabase.createClient(window.QISTTAK_CONFIG.SUPABASE_URL,window.QISTTAK_CONFIG.SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,storage:window.localStorage}});
+if(cloudConfigured()) cloud=supabase.createClient(window.QISTTAK_CONFIG.SUPABASE_URL,window.QISTTAK_CONFIG.SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storageKey:'qisttak-auth'}});
 const save=()=>{localStorage.setItem(KEY,JSON.stringify(db)); scheduleCloudSave();};
 function scheduleCloudSave(){if(!cloud||!cloudUser)return;clearTimeout(cloudTimer);cloudTimer=setTimeout(saveCloud,500);}
 async function saveCloud(){if(!cloud||!cloudUser)return;const {error}=await cloud.from('qisttak_data').upsert({user_id:cloudUser.id,data:db,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(error)console.error('Qisttak cloud save:',error);}
-async function loadCloud(){if(!cloud||!cloudUser)return;const {data,error}=await cloud.from('qisttak_data').select('data').eq('user_id',cloudUser.id).maybeSingle();if(error){showSyncBanner('تعذر الاتصال بالمزامنة: '+error.message,true);return;}if(data?.data){db={...EMPTY_DB,...data.data};localStorage.setItem(KEY,JSON.stringify(db));renderHome();}else{await saveCloud();}showSyncBanner('☁️ المزامنة فعالة — بياناتك محفوظة سحابيًا.',false);}
+async function loadCloud(show=true){if(!cloud||!cloudUser)return;const {data,error}=await cloud.from('qisttak_data').select('data').eq('user_id',cloudUser.id).maybeSingle();if(error){if(show)showSyncBanner('تعذر الاتصال بالمزامنة: '+error.message,true);return;}if(data?.data){db={...EMPTY_DB,...data.data};localStorage.setItem(KEY,JSON.stringify(db));renderHome();renderCustomers();renderContracts();renderReminders();}else{await saveCloud();}if(show)showSyncBanner('☁️ المزامنة فعالة — الحساب محفوظ على هذا الجهاز.',false);}
 function showSyncBanner(msg,error=false){const el=document.getElementById('syncBanner');if(!el)return;el.style.display='block';el.textContent=msg;el.style.borderRight='4px solid '+(error?'#c33':'#18864b');}
+let cloudChannel=null;
+let cloudPollTimer=null;
+function startCloudRealtime(){
+ if(!cloud||!cloudUser)return;
+ if(cloudChannel) cloud.removeChannel(cloudChannel);
+ cloudChannel=cloud.channel('qisttak-data-'+cloudUser.id)
+   .on('postgres_changes',{event:'*',schema:'public',table:'qisttak_data',filter:'user_id=eq.'+cloudUser.id},async payload=>{
+      if(payload.new?.data){db={...EMPTY_DB,...payload.new.data};localStorage.setItem(KEY,JSON.stringify(db));renderHome();renderCustomers();renderContracts();renderReminders();}
+   }).subscribe();
+ clearInterval(cloudPollTimer);
+ cloudPollTimer=setInterval(async()=>{if(cloudUser) await loadCloud(false)},15000);
+}
 async function initCloud(){
  if(!cloudConfigured()){showSyncBanner('المزامنة السحابية غير مفعلة بعد. افتح ☁️ المزامنة لإعدادها.',false);return;}
  const {data}=await cloud.auth.getSession(); cloudUser=data?.session?.user||null;
- if(cloudUser){await loadCloud();}
- else showSyncBanner('☁️ المزامنة جاهزة — افتح ☁️ المزامنة وسجّل الدخول.',false);
- cloud.auth.onAuthStateChange(async (_e,session)=>{cloudUser=session?.user||null;if(cloudUser) await loadCloud();});
+ if(cloudUser){await loadCloud(true);startCloudRealtime();}
+ else showSyncBanner('☁️ المزامنة جاهزة — سجّل الدخول مرة واحدة على هذا الجهاز.',false);
+ cloud.auth.onAuthStateChange(async (_e,session)=>{cloudUser=session?.user||null;if(cloudUser){await loadCloud(true);startCloudRealtime();}else{if(cloudChannel) cloud.removeChannel(cloudChannel);clearInterval(cloudPollTimer);}});
 }
 async function openSyncSettings(){
  if(!cloudConfigured()) return openModal(`<h2>☁️ المزامنة السحابية</h2><p>النسخة جاهزة للمزامنة بين الآيفون والسامسونگ، لكن لازم أولاً تربط مشروع Supabase.</p><p class="muted">بعد إنشاء المشروع، ضع رابط المشروع وAnon Key داخل ملف <b>config.js</b> ثم ارفع الملفات الثلاثة من جديد.</p><button onclick="closeModal()">حسناً</button>`);
@@ -36,6 +48,9 @@ const saveReminderDays=()=>{localStorage.setItem(REMINDER_KEY, reminderDays.valu
 // ترقية العقود القديمة لإضافة تاريخ بداية دون فقدان البيانات
 db.contracts.forEach(c=>{if(!c.startDate)c.startDate=(c.startMonth?c.startMonth+'-01':today());});
 save();
+
+// Backward compatibility: old contracts keep their original first-installment rule.
+db.contracts.forEach(c=>{if(!c.firstDueDate)c.firstDueDate=addMonthsSafe(c.startDate||today(),1);});
 const money=n=>new Intl.NumberFormat('ar-IQ').format(Math.round(n||0))+' د.ع';
 const id=()=>Date.now()+Math.random().toString(16).slice(2);
 const today=()=>new Date().toISOString().slice(0,10);
@@ -67,7 +82,7 @@ function installmentStatus(ds,i,paidCount){if(i<=paidCount)return 'مدفوع';l
 function contractRows(c,p,monthly){let rows='',ip=installmentPaid(c),paidCount=remaining(c)<=0?c.months:Math.min(c.months,Math.floor((ip+0.0001)/monthly));rows+=`<div class="installment-head"><span>#</span><span>فترة الاستحقاق</span><span>القسط</span><span>الحالة</span></div>`;for(let i=1;i<=c.months;i++){let due=Math.round(monthly),ds=dueDate(c,i),st=installmentStatus(ds,i,paidCount);let monthLabel=ds.slice(5,7)+'/'+ds.slice(0,4);rows+=`<div class="installment-card ${st==='متأخر'?'is-late':st==='مستحق'?'is-due':st==='مدفوع'?'is-paid':''}"><b class="num">${i}</b><span class="date">📅 1–5/${monthLabel}</span><b class="amount">${money(due)}</b><span class="status ${st==='مدفوع'?'paid':st==='متأخر'?'late':'due'}">${st}</span></div>`}return `<div class="installments-table">${rows}</div>`}function editContract(cid){
  let c=db.contracts.find(x=>x.id===cid); if(!c)return;
  let opts=db.customers.filter(x=>!x.archived).map(x=>`<option value="${x.id}" ${x.id===c.customerId?'selected':''}>${x.name} — ${x.phone}</option>`).join('');
- openModal(`<h2>تعديل العقد</h2><label>الزبون</label><select id="ecid">${opts}</select><label>الآيتم</label><input id="eprod" value="${String(c.product||'').replace(/"/g,'&quot;')}"><div class="grid"><div><label>سعر الشراء</label><input id="ebuy" type="number" value="${c.buy||0}"></div><div><label>ربحك على السلعة</label><input id="eprofit" type="number" value="${c.profit||0}"></div><div><label>نسبة التحميل %</label><input id="erate" type="number" value="${(c.rate||0)*100}"></div><div><label>المقدم</label><input id="edown" type="number" value="${c.down||0}"></div><div><label>تاريخ بداية الأقساط</label><input id="estartDate" type="date" value="${c.startDate||today()}"></div><div><label>عدد الأشهر</label><input id="emonths" type="number" min="1" value="${c.months||1}"></div></div><button onclick="saveEditedContract('${cid}')">حفظ التعديل</button>`);
+ openModal(`<h2>تعديل العقد</h2><label>الزبون</label><select id="ecid">${opts}</select><label>الآيتم</label><input id="eprod" value="${String(c.product||'').replace(/"/g,'&quot;')}"><div class="grid"><div><label>سعر الشراء</label><input id="ebuy" type="number" value="${c.buy||0}"></div><div><label>ربحك على السلعة</label><input id="eprofit" type="number" value="${c.profit||0}"></div><div><label>نسبة التحميل %</label><input id="erate" type="number" value="${(c.rate||0)*100}"></div><div><label>المقدم</label><input id="edown" type="number" value="${c.down||0}"></div><div><label>بداية أول قسط</label><input id="estartDate" type="date" value="${c.firstDueDate||addMonthsSafe(c.startDate||today(),1)}"></div><div><label>عدد الأشهر</label><input id="emonths" type="number" min="1" value="${c.months||1}"></div></div><button onclick="saveEditedContract('${cid}')">حفظ التعديل</button>`);
 }
 function saveEditedContract(cid){
  let c=db.contracts.find(x=>x.id===cid); if(!c)return;
@@ -75,7 +90,7 @@ function saveEditedContract(cid){
  let base=buy+profit, load=base*rate, total=base+load;
  if(total<=0)return alert('راجع البيانات');
  let oldDown=+c.down||0;
- c.customerId=ecid.value;c.product=eprod.value.trim()||'سلعة';c.buy=buy;c.profit=profit;c.rate=rate;c.base=base;c.load=load;c.total=total;c.down=down;c.months=months;c.startDate=c.startDate||today();c.startMonth=(c.startDate||today()).slice(0,7);c.firstDueDate=estartDate.value||c.firstDueDate||addMonthsSafe(c.startDate||today(),1);
+ c.customerId=ecid.value;c.product=eprod.value.trim()||'سلعة';c.buy=buy;c.profit=profit;c.rate=rate;c.base=base;c.load=load;c.total=total;c.down=down;c.months=months;c.startDate=c.startDate||today();c.startMonth=c.startDate.slice(0,7);c.firstDueDate=estartDate.value||c.firstDueDate||addMonthsSafe(c.startDate,1);
  let downPay=db.payments.find(p=>p.contractId===cid&&p.type==='down');
  if(downPay){ if(down>0) downPay.amount=down; else db.payments=db.payments.filter(p=>p!==downPay); } else if(down>0){ db.payments.push({id:id(),contractId:cid,amount:down,date:c.created||today(),type:'down'}); }
  save();closeModal();contractView(cid);
@@ -132,8 +147,8 @@ function openWorkWhatsApp(cid){let c=db.contracts.find(x=>x.id===cid),n=db.custo
 function nextDue(c){let p=paid(c),monthly=(c.total-c.down)/c.months,ip=installmentPaid(c),paidCount=remaining(c)<=0?c.months:Math.min(c.months,Math.floor((ip+0.0001)/monthly));if(p>=c.total||paidCount>=c.months)return null;let i=paidCount+1;return {i,date:dueDate(c,i),amount:Math.round(monthly)};}
 function renderReminders(){let el=document.getElementById('reminderList');if(!el)return;let sel=document.getElementById('reminderDays');if(sel)sel.value=String(getReminderDays());let days=getReminderDays(),now=new Date();now.setHours(0,0,0,0);let until=new Date(now);until.setDate(until.getDate()+days);let rows=[];db.contracts.forEach(c=>{let n=db.customers.find(x=>x.id===c.customerId);let d=nextDue(c);if(!n||!d)return;let due=new Date(d.date+'T00:00:00');if(due>=now&&due<=until)rows.push({c,n,d,delta:Math.round((due-now)/86400000)});});rows.sort((a,b)=>a.d.date.localeCompare(b.d.date));el.innerHTML=rows.length?rows.map(x=>`<div class="reminder-card"><div><h3>🔔 ${x.n.name}</h3><div class="muted">${x.n.phone} — ${x.c.product}</div><div class="reminder-date">القسط ${x.d.i} • ${formatDate(x.d.date)} • ${money(x.d.amount)}</div><span class="reminder-badge">بعد ${x.delta===0?'اليوم':x.delta+' أيام'}</span></div><button onclick="sendReminder('${x.c.id}')">📲 إرسال تذكير</button></div>`).join(''):'<div class="item">لا توجد أقساط ضمن فترة التذكير الحالية ✅</div>'}
 function sendReminder(cid){let c=db.contracts.find(x=>x.id===cid),n=db.customers.find(x=>x.id===c.customerId),d=nextDue(c);if(!n||!d)return;let lines=[`مرحباً ${n.name} 🌹`,`🔔 تذكير بدفع القسط`,`المبلغ: ${money(d.amount)}`,`فترة السداد: من ${formatDate(d.date)} إلى ${formatDate(d.date.slice(0,8)+'05')}`,`القسط رقم: ${d.i} من ${c.months}`,``,`نرجو تسديد القسط خلال فترة السداد.`,`نعتذر في حال تم الدفع مسبقاً.`,`شكراً لتعاملك معنا`,`قسطتك - GestTec`];let phone=(n.phone||'').replace(/[^0-9+]/g,'');let url='https://wa.me/'+phone.replace(/^0/,'964')+'?text='+encodeURIComponent(lines.join('\n'));window.open(url,'_blank')}
-function addPayment(cid){openModal(`<h2>تسجيل دفعة</h2><label>المبلغ</label><input id="pa" type="number"><label>التاريخ</label><input id="pd" type="date" value="${today()}"><button onclick="savePayment('${cid}')">حفظ الدفعة</button>`)}
-function savePayment(cid){let a=+pa.value;if(a<=0)return alert('أدخل مبلغاً صحيحاً');db.payments.push({id:id(),contractId:cid,amount:a,date:pd.value,type:'payment'});save();closeModal();contractView(cid)}
+function addPayment(cid){openModal(`<h2>تسجيل دفعة</h2><label>نوع الدفعة</label><select id="ptype"><option value="payment">قسط</option><option value="down">مقدم</option><option value="early">تسديد مبكر</option></select><label>المبلغ</label><input id="pa" type="number"><label>التاريخ</label><input id="pd" type="date" value="${today()}"><button onclick="savePayment('${cid}')">حفظ الدفعة</button>`)}
+function savePayment(cid){let c=db.contracts.find(x=>x.id===cid),a=+pa.value;if(!c||a<=0)return alert('أدخل مبلغاً صحيحاً');let type=ptype.value;if(type==='down'){c.down=(+c.down||0)+a;}db.payments.push({id:id(),contractId:cid,amount:a,date:pd.value,type});save();closeModal();contractView(cid)}
 function deferOne(cid){let c=db.contracts.find(x=>x.id===cid);c.deferred.push({date:today(),count:1});c.months+=1;save();contractView(cid)}
 function earlyPay(cid){let c=db.contracts.find(x=>x.id===cid),r=remaining(c);if(r<=0)return;let a=prompt('مبلغ التسديد المبكر',r);a=+a;if(a!==r)return alert('لإغلاق العقد يجب تسجيل كامل المتبقي');db.payments.push({id:id(),contractId:cid,amount:a,date:today(),type:'early'});save();closeModal();renderContracts()}
 function openSettings(){openModal(`<h2>إعدادات العمل</h2><label>رقم واتساب العمل (WhatsApp Business)</label><input id="workWhatsApp" inputmode="tel" placeholder="07XXXXXXXXX" value="${getWorkWhatsApp()}"><p class="muted">هذا الرقم يُحفظ كرقم العمل. لإرسال صورة الكشف على الآيفون، استخدم زر مشاركة الكشف واختر WhatsApp أو WhatsApp Business.</p><button onclick="saveWorkWhatsApp();closeModal()">حفظ رقم العمل</button><hr><h3>💾 حماية البيانات</h3><p class="muted">احفظ نسخة احتياطية بشكل دوري حتى لا تضيع بيانات الزبائن والعقود.</p><div class="quick"><button onclick="backupData()">💾 تنزيل نسخة احتياطية</button><label class="buttonlike">📥 استرجاع نسخة<input type="file" accept="application/json,.json" onchange="restoreData(this.files[0])" hidden></label></div>`)}
