@@ -5,8 +5,7 @@
 <title>قسطتك</title><link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="syncBanner" class="panel" style="margin:10px;display:none"></div>
-<header><div class="brand"><span>ق</span><div><b>قسطتك</b><small>GestTec</small></div></div><div class="header-actions"><button class="secondary" onclick="openSettings()">⚙️ الإعدادات</button><button class="secondary" onclick="openSyncSettings()">☁️ المزامنة</button><div id="clock"></div></div></header>
+<header><div class="brand"><span>ق</span><div><b>قسطتك</b><small>GestTec</small></div></div><div id="clock"></div></header>
 <nav>
 <button data-page="home">الرئيسية</button><button data-page="customers">الزبائن</button>
 <button data-page="contracts">العقود</button><button data-page="reports">التقارير</button><button data-page="reminders">🔔 التذكيرات</button>
@@ -33,7 +32,5 @@
 </main>
 
 <div id="modal" class="modal"><div class="modalbox"><button class="x" onclick="closeModal()">×</button><div id="modalContent"></div></div></div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="config.js"></script>
-<script src="app.js?v=20260913-2"></script>
+<script src="app.js"></script>
 </body></html>
