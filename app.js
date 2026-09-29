@@ -1,32 +1,64 @@
 const KEY='qisttak_v1_data';
 const EMPTY_DB={customers:[],contracts:[],payments:[],expenses:[]};
 let db=JSON.parse(localStorage.getItem(KEY)||JSON.stringify(EMPTY_DB));
-let cloud=null, cloudUser=null, cloudTimer=null;
+let cloud=null, cloudUser=null, cloudTimer=null, cloudChannel=null, cloudPollTimer=null;
+const CLOUD_META_KEY='qisttak_db';
 const cloudConfigured=()=>!!(window.QISTTAK_CONFIG?.SUPABASE_URL&&window.QISTTAK_CONFIG?.SUPABASE_ANON_KEY&&window.supabase);
 if(cloudConfigured()) cloud=supabase.createClient(window.QISTTAK_CONFIG.SUPABASE_URL,window.QISTTAK_CONFIG.SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storageKey:'qisttak-auth'}});
-const save=()=>{localStorage.setItem(KEY,JSON.stringify(db)); scheduleCloudSave();};
-function scheduleCloudSave(){if(!cloud||!cloudUser)return;clearTimeout(cloudTimer);cloudTimer=setTimeout(saveCloud,500);}
-async function saveCloud(){if(!cloud||!cloudUser)return;const {error}=await cloud.from('qisttak_data').upsert({user_id:cloudUser.id,data:db,updated_at:new Date().toISOString()},{onConflict:'user_id'});if(error)console.error('Qisttak cloud save:',error);}
-async function loadCloud(show=true){if(!cloud||!cloudUser)return;const {data,error}=await cloud.from('qisttak_data').select('data').eq('user_id',cloudUser.id).maybeSingle();if(error){if(show)showSyncBanner('تعذر الاتصال بالمزامنة: '+error.message,true);return;}if(data?.data){db={...EMPTY_DB,...data.data};localStorage.setItem(KEY,JSON.stringify(db));renderHome();renderCustomers();renderContracts();renderReminders();}else{await saveCloud();}if(show)showSyncBanner('☁️ المزامنة فعالة — الحساب محفوظ على هذا الجهاز.',false);}
-function showSyncBanner(msg,error=false){const el=document.getElementById('syncBanner');if(!el)return;el.style.display='block';el.textContent=msg;el.style.borderRight='4px solid '+(error?'#c33':'#18864b');}
-let cloudChannel=null;
-let cloudPollTimer=null;
+const save=()=>{localStorage.setItem(KEY,JSON.stringify(db));scheduleCloudSave();};
+function scheduleCloudSave(){if(!cloud||!cloudUser)return;clearTimeout(cloudTimer);cloudTimer=setTimeout(saveCloud,700);}
+async function saveCloud(){
+ if(!cloud||!cloudUser)return;
+ const payload={...db};
+ // Primary sync path: user metadata works without requiring a separate database table.
+ const metaResult=await cloud.auth.updateUser({data:{[CLOUD_META_KEY]:payload}});
+ if(!metaResult.error){showSyncBanner('☁️ المزامنة فعالة — البيانات محفوظة.',false);return true;}
+ // Keep compatibility with the existing qisttak_data table if it is already installed.
+ try{
+  const {error}=await cloud.from('qisttak_data').upsert({user_id:cloudUser.id,data:payload,updated_at:new Date().toISOString()},{onConflict:'user_id'});
+  if(!error){showSyncBanner('☁️ المزامنة فعالة — البيانات محفوظة.',false);return true;}
+ }catch(e){}
+ console.error('Qisttak cloud save:',metaResult.error);
+ showSyncBanner('تعذر حفظ المزامنة. البيانات المحلية لم تتأثر.',true);
+ return false;
+}
+async function readCloud(){
+ if(!cloud||!cloudUser)return null;
+ try{
+  const {data,error}=await cloud.auth.getUser();
+  if(!error){const meta=data?.user?.user_metadata?.[CLOUD_META_KEY];if(meta&&Array.isArray(meta.customers)&&Array.isArray(meta.contracts)&&Array.isArray(meta.payments))return {...EMPTY_DB,...meta};}
+ }catch(e){}
+ // Compatibility fallback for an installed qisttak_data table.
+ try{
+  const {data,error}=await cloud.from('qisttak_data').select('data').eq('user_id',cloudUser.id).maybeSingle();
+  if(!error&&data?.data)return {...EMPTY_DB,...data.data};
+ }catch(e){}
+ return null;
+}
+async function loadCloud(show=true){
+ if(!cloud||!cloudUser)return;
+ const remote=await readCloud();
+ if(remote){db=remote;localStorage.setItem(KEY,JSON.stringify(db));renderHome();renderCustomers();renderContracts();renderReminders();if(show)showSyncBanner('☁️ المزامنة فعالة — البيانات محملة من الحساب.',false);return;}
+ // First device: publish its current local data so the same account can be opened on another phone.
+ await saveCloud();
+ if(show)showSyncBanner('☁️ المزامنة فعالة — تم حفظ بيانات هذا الجهاز.',false);
+}
 function startCloudRealtime(){
  if(!cloud||!cloudUser)return;
- if(cloudChannel) cloud.removeChannel(cloudChannel);
- cloudChannel=cloud.channel('qisttak-data-'+cloudUser.id)
-   .on('postgres_changes',{event:'*',schema:'public',table:'qisttak_data',filter:'user_id=eq.'+cloudUser.id},async payload=>{
-      if(payload.new?.data){db={...EMPTY_DB,...payload.new.data};localStorage.setItem(KEY,JSON.stringify(db));renderHome();renderCustomers();renderContracts();renderReminders();}
-   }).subscribe();
+ if(cloudChannel)try{cloud.removeChannel(cloudChannel)}catch(e){}
+ cloudChannel=null;
+ // Polling is intentionally used as a safe cross-device fallback; it does not require Realtime/RLS setup.
  clearInterval(cloudPollTimer);
- cloudPollTimer=setInterval(async()=>{if(cloudUser) await loadCloud(false)},15000);
+ cloudPollTimer=setInterval(async()=>{if(cloudUser)await loadCloud(false)},5000);
 }
 async function initCloud(){
  if(!cloudConfigured()){showSyncBanner('المزامنة السحابية غير مفعلة بعد. افتح ☁️ المزامنة لإعدادها.',false);return;}
- const {data}=await cloud.auth.getSession(); cloudUser=data?.session?.user||null;
- if(cloudUser){await loadCloud(true);startCloudRealtime();}
- else showSyncBanner('☁️ المزامنة جاهزة — سجّل الدخول مرة واحدة على هذا الجهاز.',false);
- cloud.auth.onAuthStateChange(async (_e,session)=>{cloudUser=session?.user||null;if(cloudUser){await loadCloud(true);startCloudRealtime();}else{if(cloudChannel) cloud.removeChannel(cloudChannel);clearInterval(cloudPollTimer);}});
+ try{
+  const {data}=await cloud.auth.getSession();cloudUser=data?.session?.user||null;
+  if(cloudUser){await loadCloud(true);startCloudRealtime();}
+  else showSyncBanner('☁️ المزامنة جاهزة — سجّل الدخول مرة واحدة على هذا الجهاز.',false);
+  cloud.auth.onAuthStateChange(async (_e,session)=>{cloudUser=session?.user||null;if(cloudUser){await loadCloud(true);startCloudRealtime();}else{clearInterval(cloudPollTimer);}});
+ }catch(e){console.error(e);showSyncBanner('تعذر تشغيل المزامنة. البيانات المحلية لم تتأثر.',true);}
 }
 async function openSyncSettings(){
  if(!cloudConfigured()) return openModal(`<h2>☁️ المزامنة السحابية</h2><p>النسخة جاهزة للمزامنة بين الآيفون والسامسونگ، لكن لازم أولاً تربط مشروع Supabase.</p><p class="muted">بعد إنشاء المشروع، ضع رابط المشروع وAnon Key داخل ملف <b>config.js</b> ثم ارفع الملفات الثلاثة من جديد.</p><button onclick="closeModal()">حسناً</button>`);
@@ -37,7 +69,9 @@ async function openSyncSettings(){
 async function cloudSignIn(){const e=syncEmail.value.trim(),p=syncPassword.value;if(!e||!p)return alert('أدخل الإيميل وكلمة المرور');const {error}=await cloud.auth.signInWithPassword({email:e,password:p});if(error)return alert(error.message);closeModal();}
 async function cloudSignUp(){const e=syncEmail.value.trim(),p=syncPassword.value;if(!e||p.length<6)return alert('أدخل إيميل صحيح وكلمة مرور 6 أحرف على الأقل');const {error}=await cloud.auth.signUp({email:e,password:p});if(error)return alert(error.message);alert('تم إنشاء الحساب. إذا طلب تأكيد الإيميل، أكده ثم سجل الدخول.');}
 async function cloudSignOut(){await cloud.auth.signOut();cloudUser=null;showSyncBanner('☁️ تم تسجيل الخروج من المزامنة.',false);closeModal();}
-async function forceCloudSync(){await saveCloud();alert('تمت المزامنة.');}
+async function forceCloudSync(){const ok=await saveCloud();if(ok!==false)alert('تمت المزامنة.');}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&cloudUser)loadCloud(false);});
+window.addEventListener('pagehide',()=>{if(cloudUser)saveCloud();});
 initCloud();
 const REMINDER_KEY='qisttak_reminder_days';
 const WORK_WA_KEY='qisttak_work_whatsapp';
