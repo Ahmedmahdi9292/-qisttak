@@ -104,7 +104,118 @@ function createContract(){let x=calc();if(x.total<=0||x.m<1)return alert('راج
 function paid(c){return db.payments.filter(p=>p.contractId===c.id).reduce((s,p)=>s+p.amount,0)}
 function remaining(c){return Math.max(0,c.total-paid(c))}
 function installmentPaid(c){return db.payments.filter(p=>p.contractId===c.id&&(p.type==='payment'||p.type==='early')).reduce((s,p)=>s+p.amount,0)}
-function renderHome(){let totalDebt=db.contracts.reduce((s,c)=>s+remaining(c),0),received=db.payments.reduce((s,p)=>s+p.amount,0),profit=db.contracts.reduce((s,c)=>s+c.profit,0),load=db.contracts.reduce((s,c)=>s+c.load,0),late=db.contracts.filter(c=>remaining(c)>0&&status(c)==='متأخر').length;stats.innerHTML=[['👥 الزبائن',db.customers.length,''],['💰 الربح',money(profit),'orange'],['💵 المقبوض',money(received),'green'],['🧾 الديون/المتبقي',money(totalDebt),'orange'],['🟠 التحميل',money(load),''],['🔴 المتأخرون',late,'red']].map(a=>`<div class="card ${a[2]}">${a[0]}<strong>${a[1]}</strong></div>`).join('');alerts.innerHTML=late?`<div class="item">🔴 لديك <b>${late}</b> عقد متأخر.</div>`:'<div class="item">لا توجد متأخرات حالياً ✅</div>'}
+function renderHome(){let totalDebt=db.contracts.reduce((s,c)=>s+remaining(c),0),received=db.payments.reduce((s,p)=>s+p.amount,0),profit=db.contracts.reduce((s,c)=>s+c.profit,0),load=db.contracts.reduce((s,c)=>s+c.load,0),late=db.contracts.filter(c=>remaining(c)>0&&status(c)==='متأخر').length;stats.innerHTML=[['👥 الزبائن',db.customers.length,''],['💰 الربح',money(profit),'orange'],['💵 المقبوض',money(received),'green'],['🧾 الديون/المتبقي',money(totalDebt),'orange'],['🟠 التحميل',money(load),''],['🔴 المتأخرون',late,'red']].map(a=>`<div class="card ${a[2]}">${a[0]}<strong>${a[1]}</strong></div>`).join('');alerts.innerHTML=late?`<div class="item">🔴 لديك <b>${late}</b> عقد متأخر.</div>`:'<div class="item">لا توجد متأخرات حالياً ✅</div>';renderMonthlyIncome()}
+
+// الوارد الشهري: قراءة فقط من العقود والمدفوعات الحالية، دون تغيير البيانات المخزنة.
+function localMonthValue(){
+ const d=new Date();
+ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function renderMonthlyIncome(){
+ const el=document.getElementById('monthlyIncomePanel');
+ if(!el)return;
+ const existing=document.getElementById('incomeMonth');
+ const month=(existing&&existing.value)||localMonthValue();
+ const byCustomer=new Map();
+ const getRow=(customerId)=>{
+  if(!byCustomer.has(customerId)){
+   const customer=db.customers.find(x=>x.id===customerId);
+   byCustomer.set(customerId,{customerId,name:customer?.name||'زبون غير معروف',phone:customer?.phone||'',expected:0,received:0});
+  }
+  return byCustomer.get(customerId);
+ };
+ let expectedTotal=0,receivedTotal=0;
+ db.contracts.forEach(c=>{
+  const row=getRow(c.customerId);
+  const months=Math.max(1,+c.months||1);
+  const monthly=(+c.total-(+c.down||0))/months;
+  const paidInstallments=installmentPaid(c);
+  const paidCount=remaining(c)<=0?months:Math.min(months,Math.floor((paidInstallments+0.0001)/(monthly||1)));
+  if(remaining(c)>0){
+   for(let i=1;i<=months;i++){
+    if(i<=paidCount)continue;
+    if(dueDate(c,i).slice(0,7)===month){
+     const amount=Math.round(monthly);
+     row.expected+=amount;
+     expectedTotal+=amount;
+    }
+   }
+  }
+ });
+ db.payments.forEach(p=>{
+  if(!p.date||!p.date.startsWith(month)||p.type==='down')return;
+  const contract=db.contracts.find(c=>c.id===p.contractId);
+  if(!contract)return;
+  const amount=+p.amount||0;
+  const row=getRow(contract.customerId);
+  row.received+=amount;
+  receivedTotal+=amount;
+ });
+ const rows=[...byCustomer.values()].filter(x=>x.expected||x.received).sort((a,b)=>b.expected-a.expected||b.received-a.received);
+ const remainingTotal=Math.max(0,expectedTotal-receivedTotal);
+ const monthLabel=new Date(`${month}-01T00:00:00`).toLocaleDateString('ar-IQ',{year:'numeric',month:'long'});
+ el.innerHTML=`
+  <div class="monthly-income-heading"><div><h2>💰 الوارد الشهري</h2><p class="muted">الأقساط المتوقع استحقاقها والمبالغ المسجلة خلال الشهر</p></div>
+  <label class="income-month-label">الشهر<input id="incomeMonth" type="month" value="${month}" onchange="renderMonthlyIncome()"></label></div>
+  <div class="income-month-name">${monthLabel}</div>
+  <div class="income-summary">
+   <div class="income-stat expected"><span>المتوقع استلامه</span><strong>${money(expectedTotal)}</strong></div>
+   <div class="income-stat received"><span>المستلم فعلياً هذا الشهر</span><strong>${money(receivedTotal)}</strong></div>
+   <div class="income-stat outstanding"><span>المتبقي من المتوقع</span><strong>${money(remainingTotal)}</strong></div>
+  </div>
+  <h3>تفاصيل الزبائن</h3>
+  ${rows.length?`<div class="income-table-wrap"><table class="income-table"><thead><tr><th>الزبون</th><th>المتوقع</th><th>المستلم هذا الشهر</th><th>المتبقي من المتوقع</th></tr></thead><tbody>${rows.map(x=>`<tr><td><b>${x.name}</b><small>${x.phone}</small></td><td>${money(x.expected)}</td><td>${money(x.received)}</td><td>${money(Math.max(0,x.expected-x.received))}</td></tr>`).join('')}</tbody></table></div>`:'<div class="item">لا توجد أقساط متوقعة أو دفعات مسجلة لهذا الشهر.</div>'}
+  <p class="muted income-note">ملاحظة: المتوقع محسوب من مواعيد الأقساط الحالية. المستلم هو مجموع الدفعات المسجلة خلال الشهر باستثناء المقدم؛ وقد يشمل تسديد متأخر أو مبكر لأن النسخة الحالية لا تربط كل دفعة بقسط شهري محدد.</p>`;
+}
+
+// طباعة فاتورة العقد عبر نافذة الطباعة في الجهاز؛ اختيار الطابعة يعتمد على دعم نظام POS والطابعة الحرارية.
+function printInvoice(cid){
+ const c=db.contracts.find(x=>x.id===cid);
+ if(!c)return alert('لم يتم العثور على العقد');
+ const n=db.customers.find(x=>x.id===c.customerId)||{};
+ const monthly=(+c.total-(+c.down||0))/Math.max(1,+c.months||1);
+ const paidAmount=paid(c),balance=remaining(c);
+ const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+ const schedule=Array.from({length:Math.max(0,Math.min(120,+c.months||0))},(_,idx)=>{
+  const due=dueDate(c,idx+1);
+  return `<tr><td>${idx+1}</td><td>${esc(formatDate(due))}</td><td>${esc(money(Math.round(monthly)))}</td></tr>`;
+ }).join('');
+ const w=window.open('','_blank','width=420,height=720');
+ if(!w)return alert('المتصفح منع نافذة الطباعة. اسمح بالنوافذ المنبثقة ثم جرّب مرة ثانية.');
+ w.document.open();
+ w.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>فاتورة قسطتك</title>
+ <style>
+ *{box-sizing:border-box}body{font-family:Arial,Tahoma,sans-serif;color:#111;margin:0;padding:12px;font-size:12px}
+ .receipt{max-width:80mm;margin:auto}.brand{text-align:center;border-bottom:1px dashed #555;padding-bottom:10px;margin-bottom:10px}
+ h1{font-size:20px;margin:0 0 4px}.muted{color:#555;font-size:11px}.title{text-align:center;font-size:16px;font-weight:bold;margin:12px 0}
+ .line{display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px dotted #bbb}.line b{max-width:62%;text-align:left;overflow-wrap:anywhere}
+ table{width:100%;border-collapse:collapse;margin-top:10px;font-size:10px}th,td{border:1px solid #aaa;padding:5px 2px;text-align:center}th{background:#eee}
+ .footer{text-align:center;margin-top:14px;border-top:1px dashed #555;padding-top:8px}
+ .printbtn{width:100%;padding:10px;margin:10px 0;background:#10244f;color:white;border:0;border-radius:6px;font-size:14px}
+ @media print{body{padding:0}.receipt{width:100%;max-width:none}.printbtn{display:none}@page{size:80mm auto;margin:3mm}}
+ </style></head><body><div class="receipt">
+ <div class="brand"><h1>قسطتك</h1><div>GestTec</div><div class="muted">فاتورة عقد / كشف أقساط</div></div>
+ <div class="line"><span>رقم العقد</span><b>${esc(c.id)}</b></div>
+ <div class="line"><span>التاريخ</span><b>${esc(formatDate(today()))}</b></div>
+ <div class="line"><span>اسم الزبون</span><b>${esc(n.name||'-')}</b></div>
+ <div class="line"><span>رقم الهاتف</span><b>${esc(n.phone||'-')}</b></div>
+ <div class="line"><span>السلعة</span><b>${esc(c.product||'سلعة')}</b></div>
+ <div class="title">ملخص الحساب</div>
+ <div class="line"><span>سعر الأساس</span><b>${esc(money(c.base||0))}</b></div>
+ <div class="line"><span>التحميل</span><b>${esc(money(c.load||0))}</b></div>
+ <div class="line"><span>الإجمالي</span><b>${esc(money(c.total||0))}</b></div>
+ <div class="line"><span>المقدم</span><b>${esc(money(c.down||0))}</b></div>
+ <div class="line"><span>المدفوع الكلي</span><b>${esc(money(paidAmount))}</b></div>
+ <div class="line"><span>المتبقي</span><b>${esc(money(balance))}</b></div>
+ <div class="line"><span>عدد الأشهر</span><b>${esc(c.months||0)}</b></div>
+ <div class="line"><span>القسط الشهري</span><b>${esc(money(Math.round(monthly)))}</b></div>
+ <div class="title">جدول الأقساط</div>
+ <table><thead><tr><th>#</th><th>تاريخ الاستحقاق</th><th>المبلغ</th></tr></thead><tbody>${schedule}</tbody></table>
+ <div class="footer">شكراً لتعاملكم معنا<br>قسطتك — GestTec</div>
+ <button class="printbtn" onclick="window.print()">طباعة الفاتورة</button>
+ </div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),350));</script></body></html>`);
+ w.document.close();
+}
 function renderCustomers(){let q=(customerSearch?.value||'').toLowerCase();let arr=db.customers.filter(c=>!c.archived&&(c.name.toLowerCase().includes(q)||c.phone.includes(q)));customerList.innerHTML=arr.map(c=>{let cs=db.contracts.filter(x=>x.customerId===c.id),rem=cs.reduce((s,x)=>s+remaining(x),0);return `<div class="item"><h3>${c.name}</h3><div class="muted">${c.phone}</div><div class="row"><span>العقود: ${cs.length}</span><b>${money(rem)}</b></div><button onclick="customerView('${c.id}')">فتح الحساب</button></div>`}).join('')||'<p>لا توجد نتائج</p>'}
 function customerView(cid){let c=db.customers.find(x=>x.id===cid),cs=db.contracts.filter(x=>x.customerId===cid);openModal(`<h2>${c.name}</h2><p>${c.phone}</p><p>إجمالي المتبقي: <b>${money(cs.reduce((s,x)=>s+remaining(x),0))}</b></p>${cs.map(x=>`<div class="item"><b>${x.product}</b><br>المتبقي: ${money(remaining(x))}<br><button onclick="contractView('${x.id}')">تفاصيل العقد</button></div>`).join('')}<button class="secondary" onclick="archiveCustomer('${cid}')">أرشفة الزبون</button>`)}
 function archiveCustomer(cid){if(db.contracts.some(c=>c.customerId===cid&&remaining(c)>0))return alert('لا يمكن أرشفة زبون عليه متبقي');db.customers.find(c=>c.id===cid).archived=true;save();closeModal();renderCustomers()}
@@ -130,7 +241,7 @@ function saveEditedContract(cid){
  save();closeModal();contractView(cid);
 }
 function deleteContract(cid){let c=db.contracts.find(x=>x.id===cid);if(!c)return;let n=db.customers.find(x=>x.id===c.customerId);if(!confirm(`هل أنت متأكد من مسح عقد ${n?.name||''}؟\nسيتم حذف العقد وجميع دفعاته، ولن يُحذف الزبون.`))return;db.contracts=db.contracts.filter(x=>x.id!==cid);db.payments=db.payments.filter(p=>p.contractId!==cid);save();closeModal();go('contracts')}
-function contractView(cid){let c=db.contracts.find(x=>x.id===cid),n=db.customers.find(x=>x.id===c.customerId)?.name||'-',p=paid(c),rem=remaining(c),monthly=(c.total-c.down)/c.months;let rows=contractRows(c,p,monthly);openModal(`<h2>${n} — ${c.product}</h2><div class="panel"><div class="row"><span>سعر الأساس</span><b>${money(c.base)}</b></div><div class="row"><span>التحميل</span><b>${money(c.load)}</b></div><div class="row"><span>الإجمالي</span><b>${money(c.total)}</b></div><div class="row"><span>المقدم</span><b>${money(c.down)}</b></div><div class="row"><span>المدفوع</span><b>${money(p)}</b></div><div class="row"><span>المتبقي</span><b>${money(rem)}</b></div></div><h3>جدول الأقساط</h3>${rows}<div class="quick"><button onclick="addPayment('${cid}')">💵 تسجيل دفعة</button><button onclick="sendWhatsApp('${cid}')">📷 إرسال كشف كصورة</button><button class="secondary" onclick="editContract('${cid}')">✏️ تعديل العقد</button><button onclick="sendReminder('${cid}')">🔔 تذكير القسط</button><button onclick="deferOne('${cid}')">⏸️ تأجيل قسط</button><button onclick="earlyPay('${cid}')">✅ تسديد مبكر</button><button class="danger" onclick="deleteContract('${cid}')">🗑️ مسح العقد</button></div>`)}
+function contractView(cid){let c=db.contracts.find(x=>x.id===cid),n=db.customers.find(x=>x.id===c.customerId)?.name||'-',p=paid(c),rem=remaining(c),monthly=(c.total-c.down)/c.months;let rows=contractRows(c,p,monthly);openModal(`<h2>${n} — ${c.product}</h2><div class="panel"><div class="row"><span>سعر الأساس</span><b>${money(c.base)}</b></div><div class="row"><span>التحميل</span><b>${money(c.load)}</b></div><div class="row"><span>الإجمالي</span><b>${money(c.total)}</b></div><div class="row"><span>المقدم</span><b>${money(c.down)}</b></div><div class="row"><span>المدفوع</span><b>${money(p)}</b></div><div class="row"><span>المتبقي</span><b>${money(rem)}</b></div></div><h3>جدول الأقساط</h3>${rows}<div class="quick"><button onclick="printInvoice('${cid}')">🧾 طباعة الفاتورة</button><button onclick="addPayment('${cid}')">💵 تسجيل دفعة</button><button onclick="sendWhatsApp('${cid}')">📷 إرسال كشف كصورة</button><button class="secondary" onclick="editContract('${cid}')">✏️ تعديل العقد</button><button onclick="sendReminder('${cid}')">🔔 تذكير القسط</button><button onclick="deferOne('${cid}')">⏸️ تأجيل قسط</button><button onclick="earlyPay('${cid}')">✅ تسديد مبكر</button><button class="danger" onclick="deleteContract('${cid}')">🗑️ مسح العقد</button></div>`)}
 function normalizePhone(phone){let p=(phone||'').replace(/[^0-9]/g,'');if(p.startsWith('0'))p='964'+p.slice(1);return p}
 function buildStatementCanvas(cid){return new Promise(async resolve=>{
  let c=db.contracts.find(x=>x.id===cid),n=db.customers.find(x=>x.id===c.customerId);if(!c||!n)return;

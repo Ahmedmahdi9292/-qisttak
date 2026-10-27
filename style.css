@@ -3,3 +3,27 @@
 .installment{gap:10px;align-items:center}.installment>span:first-child{display:flex;flex-direction:column;gap:3px}.installment small{font-size:12px;color:#777}.status.paid{background:#e7f7ed;color:#187a43}.status.late{background:#fde8e8;color:#b42318}.status.due{background:#fff4d6;color:#9a6700}
 
 .installments-table{margin:12px 0}.installment-head,.installment-card{display:grid;grid-template-columns:42px 1.4fr 1fr .8fr;gap:10px;align-items:center}.installment-head{padding:9px 12px;color:#667085;font-size:12px;font-weight:700}.installment-card{background:#fff;border:1px solid #e7eaf0;border-right:4px solid #dbe1ea;border-radius:14px;padding:12px;margin:8px 0;box-shadow:0 2px 9px #00000008}.installment-card.is-late{border-right-color:#d9534f;background:#fffafa}.installment-card.is-due{border-right-color:#f28a22;background:#fffdf8}.installment-card.is-paid{border-right-color:#36a269}.installment-card .num{width:30px;height:30px;border-radius:9px;background:#101c3d;color:#fff;display:grid;place-items:center}.installment-card .date{font-size:14px}.installment-card .amount{font-size:14px}.reminder-settings{margin-bottom:16px}.reminder-card{background:#fff;border-radius:16px;padding:16px;margin:10px 0;display:flex;justify-content:space-between;align-items:center;gap:12px;box-shadow:0 2px 12px #0000000d;border-right:4px solid #f28a22}.reminder-card h3{margin:0 0 5px}.reminder-date{font-weight:700;margin:9px 0}.reminder-badge{display:inline-block;background:#fff0d8;color:#9a6700;padding:5px 9px;border-radius:8px;font-size:12px;font-weight:700}@media(max-width:650px){.installment-head,.installment-card{grid-template-columns:34px 1.4fr .9fr .8fr;font-size:12px}.installment-card{padding:10px 8px}.installment-card .date{font-size:12px}.reminder-card{align-items:flex-start;flex-direction:column}.reminder-card button{width:100%}}
+
+
+/* إضافات الوارد الشهري */
+.monthly-income-panel{margin:16px 0 20px}
+.monthly-income-heading{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.monthly-income-heading h2{margin:0 0 5px}
+.monthly-income-heading p{margin:0}
+.income-month-label{min-width:170px}
+.income-month-label input{margin:6px 0 0}
+.income-month-name{font-weight:700;margin:10px 0;color:#344054}
+.income-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0 20px}
+.income-stat{background:#f8fafc;border:1px solid #e7eaf0;border-radius:13px;padding:14px}
+.income-stat span{display:block;font-size:13px;color:#667085}
+.income-stat strong{display:block;font-size:clamp(17px,2.6vw,24px);margin-top:7px;overflow-wrap:anywhere}
+.income-stat.expected{border-top:4px solid #f28a22}
+.income-stat.received{border-top:4px solid #36a269}
+.income-stat.outstanding{border-top:4px solid #d9534f}
+.income-table-wrap{overflow-x:auto}
+.income-table{width:100%;border-collapse:collapse;min-width:540px}
+.income-table th,.income-table td{padding:11px 9px;border-bottom:1px solid #e7eaf0;text-align:right;vertical-align:top}
+.income-table th{background:#f8fafc;font-size:13px}
+.income-table td small{display:block;color:#667085;margin-top:4px}
+.income-note{font-size:12px;line-height:1.7;margin-top:12px}
+@media(max-width:650px){.income-summary{grid-template-columns:1fr}.income-stat{padding:12px}.income-table{min-width:520px}}
