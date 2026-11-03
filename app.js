@@ -290,7 +290,7 @@ function buildStatementCanvas(cid){return new Promise(async resolve=>{
  rounded(100,footY+12,450,70,14,'#e5f6eb');rounded(650,footY+12,450,70,14,'#e8eef9');
  text(`المدفوع: ${money(p)}`,325,footY+47,31,700,'center','#118844',true,410);
  text(`المتبقي: ${money(rem)}`,875,footY+47,31,700,'center','#10244f',true,410);
- text(new Date().toLocaleString('ar-IQ',{dateStyle:'short',timeStyle:'short'}),600,footY+105,18,600,'center','#33445f',true);
+ text(new Date().toLocaleString('ar-IQ',{dateStyle:'short',timeStyle:'short'}),600,footY+105,22,600,'center','#33445f',true);
  canvas.toBlob(blob=>resolve({blob,name:`qisttak-${normalizePhone(n.phone)}.png`,customerPhone:normalizePhone(n.phone)}),'image/png');
  })}
 async function sendWhatsApp(cid){let c=db.contracts.find(x=>x.id===cid),n=db.customers.find(x=>x.id===c.customerId);if(!n)return;let phone=normalizePhone(n.phone);if(!phone)return alert('رقم الزبون غير صحيح');let data=await buildStatementCanvas(cid);let file=new File([data.blob],data.name,{type:'image/png'});if(navigator.share&&navigator.canShare&&navigator.canShare({files:[file]})){try{await navigator.share({files:[file],title:'كشف حساب '+n.name});return}catch(e){if(e.name==='AbortError')return;}}let a=document.createElement('a');a.href=URL.createObjectURL(data.blob);a.download=data.name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1500);alert('تم تجهيز صورة الكشف. من المشاركة اختر WhatsApp Business ثم اختر رقم الزبون.');}
